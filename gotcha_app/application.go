@@ -56,13 +56,13 @@ func init() {
   flag.StringVar(&confFile, "config", "config.yml", "Path to config file")
   flag.Parse()
   if confFile, err := filepath.Abs(confFile); err != nil {
-    log.Printf("Cannot find configuration file '%s', using default settings", confFile)
+    log.Printf("Cannot find configuration file '%v', using default settings", confFile)
   } else if raw, err := ioutil.ReadFile(confFile); err != nil {
-    log.Printf("[%s] Cannot load configuration file '%s', using default settings", os.Getpid(), confFile)
+    log.Printf("[%v] Cannot load configuration file '%v', using default settings", os.Getpid(), confFile)
   } else {
     err := goyaml.Unmarshal(raw, &globalSettings)
     if err != nil {
-      log.Printf("Cannot load configuration settings: %s", err)
+      log.Printf("Cannot load configuration settings: %v", err)
     }
   }
   for setting, value := range defaultSettings() {
@@ -72,7 +72,7 @@ func init() {
   }
   msg, err := goyaml.Marshal(&globalSettings)
   if err != nil {
-    log.Fatalf("Could not log settings: %s", err)
+    log.Fatalf("Could not log settings: %v", err)
   }
   log.Printf("Startup settings:\n%s", msg)
 
@@ -83,6 +83,7 @@ func init() {
 // Entry point, load routes and start server
 func main() {
 	m := pat.New()
+	m.Get("/projects", http.HandlerFunc(listProjects))
 	m.Post("/projects/:projectName", http.HandlerFunc(createProject))
 	m.Get("/projects/:projectName", http.HandlerFunc(showProject))
 	m.Del("/projects/:projectName", http.HandlerFunc(deleteProject))
@@ -95,11 +96,45 @@ func main() {
   m.Get("/projects/:projectName/queues/:queueName/messages", http.HandlerFunc(getMessages))
   m.Post("/projects/:projectName/queues/:queueName/messages/delete", http.HandlerFunc(deleteMessages))
 
-	http.Handle("/", m)
+  logger := httpLogger{Handler: m}
+	http.Handle("/", logger)
 	err := http.ListenAndServe(":8000", nil)
 	if err != nil {
-		log.Fatalf("Could not start server: %s", err)
+		log.Fatalf("Could not start server: %v", err)
 	}
+}
+
+/*
+ GET /projects
+
+ List all projects
+
+ Parameters
+   - none
+
+ Response
+   - code: 200
+   - body (JSON): [{name:"foo", size:10, created_at:"2009-11-10 23:00:00 +0000 UTC"}, ...]
+
+ Misc. error
+   - code: 422
+   - body: <Error message>
+*/
+func listProjects(w http.ResponseWriter, req *http.Request) {
+  ps, err := gotcha.ListProjects()
+  if err != nil {
+    http.Error(w, fmt.Sprintf("Failed to retrieve projects: %v", err), 422)
+    return
+  }
+  infos := make([]gotcha.ProjectInfo, 0)
+  for _, p := range *ps {
+    if i, err := p.Info(); err != nil {
+      http.Error(w, fmt.Sprintf("Failed to retrieve project details: %v", err), 422)
+    } else {
+      infos = append(infos, *i)
+    }
+  }
+  sendResponse(w, &infos)
 }
 
 /* 
@@ -117,7 +152,7 @@ func main() {
 func createProject(w http.ResponseWriter, req *http.Request) {
   name := req.URL.Query().Get(":projectName")
   if _, err := gotcha.NewProject(name); err != nil {
-    http.Error(w, fmt.Sprintf("Failed to create project: %s", err), 422)
+    http.Error(w, fmt.Sprintf("Failed to create project: %v", err), 422)
   } else {
     w.WriteHeader(204)
   }
@@ -147,7 +182,7 @@ func showProject(w http.ResponseWriter, req *http.Request) {
   }
   i, err := p.Info()
   if err != nil {
-    http.Error(w, fmt.Sprintf("Failed to load project details: %s", err), 422)
+    http.Error(w, fmt.Sprintf("Failed to load project details: %v", err), 422)
     return
   }
   sendResponse(w, i)
@@ -179,7 +214,7 @@ func deleteProject(w http.ResponseWriter, req *http.Request) {
     http.Error(w, "Project not found", 404)
   } else {
     if err := p.Destroy(); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to delete project: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), 422)
     } else {
       w.WriteHeader(204)
     }
@@ -205,7 +240,7 @@ func createQueue(w http.ResponseWriter, req *http.Request) {
   } else {
     name := req.URL.Query().Get(":queueName")
     if _, err := gotcha.NewQueue(name, p); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to create queue: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to create queue: %v", err), 422)
     } else {
       w.WriteHeader(204)
     }
@@ -234,12 +269,12 @@ func listQueues(w http.ResponseWriter, req *http.Request) {
     return
   } else {
     if qs, err := p.Queues(); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to load queues: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to load queues: %v", err), 422)
     } else {
       infos := make([]gotcha.QueueInfo, 0, len(*qs))
       for _, q := range *qs {
         if i, err := q.Info(); err != nil {
-          http.Error(w, fmt.Sprintf("Failed to retrieve queue details: %s", err), 422)
+          http.Error(w, fmt.Sprintf("Failed to retrieve queue details: %v", err), 422)
         } else {
           infos = append(infos, *i)
         }
@@ -274,7 +309,7 @@ func showQueue(w http.ResponseWriter, req *http.Request) {
     http.Error(w, "Queue not found", 404)
   } else {
     if i, err := q.Info(); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to retrieve queue details: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to retrieve queue details: %v", err), 422)
     } else {
       sendResponse(w, i)
     }
@@ -306,7 +341,7 @@ func deleteQueue(w http.ResponseWriter, req *http.Request) {
     http.Error(w, "Queue not found", 404)
   } else {
     if err := q.Destroy(); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to delete queue: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to delete queue: %v", err), 422)
     } else {
       w.WriteHeader(204)
     }
@@ -338,7 +373,7 @@ func clearQueue(w http.ResponseWriter, req *http.Request) {
     http.Error(w, "Queue not found", 404)
   } else {
     if err := q.Clear(); err != nil {
-      http.Error(w, fmt.Sprintf("Failed to clear queue: %s", err), 422)
+      http.Error(w, fmt.Sprintf("Failed to clear queue: %v", err), 422)
     } else {
       w.WriteHeader(204)
     }
@@ -353,7 +388,7 @@ func clearQueue(w http.ResponseWriter, req *http.Request) {
  The messages must be set in the "messages" form value serialized in a JSON array
  Each message must be a hash consisting of the following key value pairs:
    - body:       required, contains the UTF-8 encoded message body
-   - expires_in: optional, contains the amount of time the message must be kept
+   - expiresIn:  optional, contains the amount of time the message must be kept
                  in the queue before it is either read or discarded, default is
                  7 days
 
@@ -361,7 +396,7 @@ func clearQueue(w http.ResponseWriter, req *http.Request) {
  separated.
 
  Parameters (Form-Encoded value containing JSON array)
-   - messages: [{body: "...", expires_in: 6000}, ...]
+   - messages: [{body: "...", expiresIn: 6000}, ...]
 
  Response
    - code: 201
@@ -401,7 +436,7 @@ func addMessages(w http.ResponseWriter, req *http.Request) {
     return
   }
   if len(messages) > MaxEnqueueCount {
-    http.Error(w, fmt.Sprintf("Cannot enqueue more than %s messages in one request", MaxEnqueueCount), 400)
+    http.Error(w, fmt.Sprintf("Cannot enqueue more than %v messages in one request", MaxEnqueueCount), 400)
     return
   }
   internalMsgs := make([]gotcha.Message, 0, len(messages))
@@ -412,9 +447,9 @@ func addMessages(w http.ResponseWriter, req *http.Request) {
       http.Error(w, "Badly formed request ('messages' contains a message with no 'body' value)", 400)
       return
     }
-    expiresIn, err := extractDuration(m["expires_in"], gotcha.MinMessageExpiry, gotcha.MaxMessageExpiry, gotcha.DefaultMessageExpiry)
+    expiresIn, err := extractDuration(m["expiresIn"], gotcha.MinMessageExpiry, gotcha.MaxMessageExpiry, gotcha.DefaultMessageExpiry)
     if err != nil {
-      http.Error(w, fmt.Sprintf("Badly formed request: %s (expires_in)", err), 400)
+      http.Error(w, fmt.Sprintf("Badly formed request: %v (expiresIn)", err), 400)
       return
     }
     internalMsgs = append(internalMsgs, gotcha.Message{ID: bson.NewObjectId(), Body: body, QueueID: q.ID, ProjectID: q.ProjectID,
@@ -422,12 +457,12 @@ func addMessages(w http.ResponseWriter, req *http.Request) {
   }
   err = gotcha.SaveMessages(&internalMsgs)
   if err != nil {
-    http.Error(w, fmt.Sprintf("Failed to enqueue messages: %s", err), 422)
+    http.Error(w, fmt.Sprintf("Failed to enqueue messages: %v", err), 422)
     return
   }
   ids := make([]string, 0, len(internalMsgs))
   for _, m := range internalMsgs {
-    ids = append(ids, string(m.ID))
+    ids = append(ids, m.ID.Hex())
   }
   w.Header().Add("ids", strings.Join(ids, ","))
   w.WriteHeader(201)
@@ -450,7 +485,7 @@ func extractDuration(val interface{}, min, max, def time.Duration) (time.Duratio
     var err error
     intVal, err = strconv.Atoi(strVal)
     if err != nil {
-      return time.Duration(0), errors.New(fmt.Sprintf("Invalid duration value '%s'", val))
+      return time.Duration(0), errors.New(fmt.Sprintf("Invalid duration value '%v'", val))
     }
   }
   return time.Duration(intVal) * time.Second, nil
@@ -505,21 +540,20 @@ func getMessages(w http.ResponseWriter, req *http.Request) {
   } else {
     count, err = strconv.Atoi(countStr)
     if err != nil {
-      http.Error(w, fmt.Sprintf("Invalid count value '%s' (must be an integer)", countStr), 400)
+      http.Error(w, fmt.Sprintf("Invalid count value '%v' (must be an integer)", countStr), 400)
       return
     }
   }
   timeout, err := extractDuration(req.URL.Query().Get("timeout"), MinMessageTimeout, MaxMessageTimeout, DefaultMessageTimeout)
   if err != nil {
-    http.Error(w, fmt.Sprintf("Invalid timeout value '%s' (must be an integer <= %s >= %s)", timeout, MaxMessageTimeout.Seconds(), MinMessageTimeout.Seconds()), 400)
+    http.Error(w, fmt.Sprintf("Invalid timeout value '%v' (must be an integer <= %v >= %v)", timeout, MaxMessageTimeout.Seconds(), MinMessageTimeout.Seconds()), 400)
     return
   }
   messages, err := q.LeaseMessages(count, timeout)
   if err != nil {
-    http.Error(w, fmt.Sprintf("Failed to lease messages (%s)", err), 400)
+    http.Error(w, fmt.Sprintf("Failed to lease messages (%v)", err), 400)
     return
   }
-  sendResponse(w, messages)
   if messages != nil {
     b, err := json.Marshal(*messages)
     if err != nil {
@@ -579,7 +613,7 @@ func deleteMessages(w http.ResponseWriter, req *http.Request) {
   }
   err = q.DeleteMessages(&messageIds)
   if err != nil {
-    http.Error(w, fmt.Sprintf("Could not delete all messages: %s", err), 422)
+    http.Error(w, fmt.Sprintf("Could not delete all messages: %v", err), 422)
     return
   }
   w.WriteHeader(204)
@@ -588,7 +622,7 @@ func deleteMessages(w http.ResponseWriter, req *http.Request) {
 // Helper method to send document or error in http response
 func sendResponse(w http.ResponseWriter, doc interface{}) {
   if b, err := json.Marshal(doc); err != nil {
-    log.Printf("**ERROR: Failed to serialize %s: %s", doc, err)
+    log.Printf("**ERROR: Failed to serialize %v: %v", doc, err)
     http.Error(w, "Failed to serialize response", 500)
   } else {
     io.WriteString(w, string(b))
@@ -600,7 +634,7 @@ func findProject(w http.ResponseWriter, req *http.Request) (*gotcha.Project, err
   name := req.URL.Query().Get(":projectName")
   p, err := gotcha.LoadProject(name)
   if err != nil {
-    return nil, errors.New(fmt.Sprintf("Project with name '%s' not found", name))
+    return nil, errors.New(fmt.Sprintf("Project with name '%v' not found", name))
   }
   return p, nil
 }
@@ -614,7 +648,7 @@ func findQueue(w http.ResponseWriter, req *http.Request) (*gotcha.Queue, error) 
   name := req.URL.Query().Get(":queueName")
   q, err := p.Queue(name)
   if err != nil {
-    return nil, errors.New(fmt.Sprintf("Queue with name '%s' not found", name))
+    return nil, errors.New(fmt.Sprintf("Queue with name '%v' not found", name))
   }
   return q, nil
 }

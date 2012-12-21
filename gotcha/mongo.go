@@ -52,13 +52,13 @@ func StartSession(host, user, pass, env string) error {
   // Initialize connection and login
   s, err := mgo.Dial(host)
   if err != nil {
-    log.Printf("**ERROR: Could not connect to MongoDB: %s", err)
+    log.Printf("**ERROR: Could not connect to MongoDB: %v", err)
     return err
   }
   db := s.DB(env)
   if user != "" && pass != "" {
     if err := db.Login(user, pass); err != nil {
-      log.Printf("**ERROR: Could not login to MongoDB: %s", err)
+      log.Printf("**ERROR: Could not login to MongoDB: %v", err)
       return err
     }
   }
@@ -96,7 +96,7 @@ func createIndex(db *mgo.Database, col string, keys []string, unique bool) error
   c := db.C(col)
   err := c.EnsureIndex(index)
   if err != nil {
-    log.Printf("**ERROR: Failed to create %s index on %s collection: %s", keys, col, err)
+    log.Printf("**ERROR: Failed to create %v index on %v collection: %v", keys, col, err)
     return err
   }
   return nil
@@ -107,12 +107,12 @@ func (s *session) Close() {
   s.mgoSession.Close()
 }
 
-// Insert one or more document(s)
+// Insert one document
 func (s *session) Insert(col string, doc interface{}) error {
   c := s.db.C(col)
   err := c.Insert(doc)
   if err != nil {
-    log.Fatalf("Could not insert document '%s' in collection %s: %s", doc, col, err)
+    log.Printf("**ERROR: Could not insert document '%v' in collection %v: %v", doc, col, err)
   }
   return err
 }
@@ -122,7 +122,7 @@ func (s *session) GetId(col string, id bson.ObjectId, doc interface{}) error {
   c := s.db.C(col)
   err := c.FindId(id).One(doc)
   if err != nil {
-    log.Printf("**ERROR: Could not lookup document with id %s from collection %s: %s", id, col, err)
+    log.Printf("**ERROR: Could not lookup document with id %v from collection %v: %v", id.Hex(), col, err)
   }
   return err
 }
@@ -132,8 +132,11 @@ func (s *session) GetId(col string, id bson.ObjectId, doc interface{}) error {
 func (s *session) Get(col string, query bson.M, maxCount int, docs interface{}) error {
   c := s.db.C(col)
   err := c.Find(query).Limit(maxCount).All(docs)
-  if err != nil {
-    log.Printf("**ERROR: Failed to run query %s in collection %s: %s", query, col, err)
+  if err == mgo.ErrNotFound {
+    err = nil // It's ok not to find anything matching the query in this case (it's not for GetOne)
+  }
+  if err != nil  {
+    log.Printf("**ERROR: Failed to run query %v in collection %v: %v", query, col, err)
   }
   return err
 }
@@ -143,7 +146,7 @@ func (s *session) GetOne(col string, query bson.M, doc interface{}) error {
   c := s.db.C(col)
   err := c.Find(query).One(doc)
   if err != nil {
-    log.Printf("**ERROR: Failed to run query %s in collection %s: %s", query, col, err)
+    log.Printf("**ERROR: Failed to run query %v in collection %v: %v", query, col, err)
   }
   return err
 }
@@ -153,7 +156,7 @@ func (s *session) Count(col string, query bson.M) (int, error) {
   c := s.db.C(col)
   count, err := c.Find(query).Count()
   if err != nil {
-    log.Printf("**ERROR: Could not count documents with query %s from collection %s: %s", query, col, err)
+    log.Printf("**ERROR: Could not count documents with query %v from collection %v: %v", query, col, err)
   }
   return count, err
 }
@@ -184,7 +187,7 @@ func (s *session) DestroyId(col string, id bson.ObjectId) error {
   c := s.db.C(col)
   err := c.RemoveId(id)
   if err != nil {
-    log.Printf("**ERROR: Failed to delete %s from collection %s: %s", id, col, err)
+    log.Printf("**ERROR: Failed to delete %v from collection %v: %v", id, col, err)
   }
   return err
 }
@@ -195,7 +198,7 @@ func (s *session) Destroy(col string, query bson.M) (int, error) {
   c := s.db.C(col)
   info, err := c.RemoveAll(query)
   if err != nil {
-    log.Printf("**ERROR: Failed to delete with query %s from collection %s: %s", query, col, err)
+    log.Printf("**ERROR: Failed to delete with query %v from collection %v: %v", query, col, err)
   }
   return info.Removed, err
 }

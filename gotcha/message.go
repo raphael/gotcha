@@ -7,13 +7,13 @@ import (
 
 // Internal message datastructure
 type Message struct {
-  ID        bson.ObjectId "_id,omitempty"    // ID
-  Body      string                           // Message body (UTF-8 encoded)
-  QueueID   bson.ObjectId "queue"            // ID of queue containing message
-  ProjectID bson.ObjectId "project"          // ID of project containing message
-  ExpiresAt time.Time     "expires_at"       // Expiry timestamp (message is deleted after that time)
-  CreatedAt time.Time     "created_at"       // Creation timestamp
-  LeasedAt  time.Time     "lease_expires_at" // Lease expiry timestamp if any
+  ID             bson.ObjectId "_id,omitempty"    // ID
+  Body           string        "body"             // Message body (UTF-8 encoded)
+  QueueID        bson.ObjectId "queue"            // ID of queue containing message
+  ProjectID      bson.ObjectId "project"          // ID of project containing message
+  ExpiresAt      time.Time     "expires_at"       // Expiry timestamp (message is deleted after that time)
+  CreatedAt      time.Time     "created_at"       // Creation timestamp
+  LeaseExpiresAt time.Time     "lease_expires_at" // Lease expiry timestamp if any
 }
 
 // Default expiry
@@ -35,7 +35,13 @@ func LoadMessage(id string) (*Message, error) {
 
 // Save messages to database
 func SaveMessages(messages *[]Message) error {
-  return Mongo.Insert("message", messages)
+  for _, msg := range *messages {
+    err := Mongo.Insert("message", msg)
+    if err != nil {
+      return err
+    }
+  }
+  return nil
 }
 
 // Delete message from database

@@ -2,25 +2,33 @@ package gotcha
 
 import (
   "labix.org/v2/mgo/bson"
+  "math"
   "time"
 )
 
 // A project has an id
 type Project struct {
   ID        bson.ObjectId "_id,omitempty"
-  Name      string
+  Name      string        "name"
   CreatedAt time.Time     "created_at"
 }
 
 // Project info exported to API
 type ProjectInfo struct {
-  Name        string
-  QueueCount  int       "queue_count"
-  CreatedAt   time.Time "created_at"
+  Name        string    `json:"name"`
+  QueueCount  int       `json:"queueCount"`
+  CreatedAt   time.Time `json:"createdAt"`
 }
 
 // Maximum number of queues a single project can hold
 const MaxQueuesPerProject = 100000
+
+// List all projects
+func ListProjects() (*[]Project, error) {
+  ps := make([]Project, 0, 10)
+  err := Mongo.Get("project", bson.M{}, math.MaxInt32, &ps)
+  return &ps, err
+}
 
 // Create new project
 func NewProject(name string) (*Project, error) {

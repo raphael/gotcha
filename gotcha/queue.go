@@ -11,26 +11,28 @@ import (
 // Internal queue structure
 type Queue struct {
   ID        bson.ObjectId "_id,omitempty" // ID
-  Name      string                        // Name of queue (unique in project)
+  Name      string        "name"          // Name of queue (unique in project)
   ProjectID bson.ObjectId "project"       // Project containing queue
-  CreatedAt time.Time     "created_at"    // Creation timestamp
+  CreatedAt time.Time     "createdAt"     // Creation timestamp
 }
 
 // Queue information returned by APIs
 type QueueInfo struct {
-  Name        string                 // Name of queue (unique in project)
-  ProjectName string    "project"    // Name of project containing queue
-  CreatedAt   time.Time "created_at" // Creation timestamp
-  Size        int                    // Number of messages in queue
+  Name        string    `json:"name"`      // Name of queue (unique in project)
+  ProjectName string    `json:"project"`   // Name of project containing queue
+  CreatedAt   time.Time `json:"createdAt"` // Creation timestamp
+  Size        int       `json:"size"`      // Number of messages in queue
 }
 
 // Message information returned by APIs
 type MessageInfo struct {
-  ID          bson.ObjectId "_id,omitempty"
-  Body        string
-  QueueName   string        "queue"
-  ProjectName string        "project"
-  CreatedAt   time.Time     "created_at"
+  ID               bson.ObjectId `json:"id"`               // ID
+  Body             string        `json:"body"`             // Message body (UTF-8)
+  QueueName        string        `json:"queue"`            // Name of queue containing message
+  ProjectName      string        `json:"project"`          // Name of project containing message
+  CreatedAt        time.Time     `json:"createdAt"`        // Creation timestamp
+  MessageExpiresAt time.Time     `json:"messageExpiresAt"` // Expiry timestamp
+  LeaseExpiresAt   time.Time     `json:"leaseExpiresAt"`   // Timeout of lease in seconds     
 }
 
 // Create new queue
@@ -41,7 +43,7 @@ func NewQueue(name string, project *Project) (*Queue, error) {
     return nil, err
   }
   if info.QueueCount >= MaxQueuesPerProject {
-    return nil, errors.New(fmt.Sprintf("Maximum number of queues (%s) reached for project '%s'", MaxQueuesPerProject, project.Name))
+    return nil, errors.New(fmt.Sprintf("Maximum number of queues (%v) reached for project '%v'", MaxQueuesPerProject, project.Name))
   }
   q := Queue{ID: bson.NewObjectId(), Name: name, ProjectID: project.ID, CreatedAt: time.Now().UTC()}
   Mongo.Insert("queue", &q)
@@ -85,7 +87,7 @@ func (q *Queue) LeaseMessages(count int, timeout time.Duration) (*[]MessageInfo,
 // Delete all messages from queue
 func (q *Queue) Clear() error {
   count, err := Mongo.Destroy("message", bson.M{"project": q.ProjectID, "queue": q.ID})
-  log.Printf("Deleted %s messages from queue %s", count, q.ID)
+  log.Printf("Deleted %v messages from queue %v", count, q.ID.Hex())
   return err
 }
 
@@ -98,7 +100,7 @@ func (q *Queue) DeleteMessages(messageIds *[]string) error {
       return err
     }
     if m.QueueID != q.ID {
-      return errors.New(fmt.Sprintf("Message with id %s does not belong to queue %s", id, q.Name))
+      return errors.New(fmt.Sprintf("Message with id %v does not belong to queue %v", id, q.Name))
     }
     m.Destroy()
   }
@@ -126,7 +128,7 @@ func messageInfos(messages *[]*Message) (*[]MessageInfo, error) {
   }
   infos := make([]MessageInfo, 0, len(msgs))
   for _, m := range msgs {
-    infos = append(infos, MessageInfo{ID: m.ID, Body: m.Body, QueueName: q.Name, ProjectName: p.Name, CreatedAt: m.CreatedAt})
+    infos = append(infos, MessageInfo{ID: m.ID, Body: m.Body, QueueName: q.Name, ProjectName: p.Name, CreatedAt: m.CreatedAt, MessageExpiresAt: m.ExpiresAt, LeaseExpiresAt: m.LeaseExpiresAt})
   }
   return &infos, nil
 }
