@@ -10,11 +10,11 @@ package gotcha
     project := new(Project)
     Mongo.GetOne("project", bson.M{"name": "foo"}, &project)
     ...
-    Mongo.DestroyId("projects", project.ID)
+    Mongo.DestroyId("project", project.ID)
     Mongo.Close()
 
   Available methods on "Mongo":
-    Insert: Insert document in given collection
+    Insert: Insert documents in given collection
     GetId: Read document from id from given collection
     Get: Retrieve documents matching given query from given collection
     GetOne: Retrieve first document matching given query from given collection
@@ -107,12 +107,12 @@ func (s *session) Close() {
   s.mgoSession.Close()
 }
 
-// Insert one document
-func (s *session) Insert(col string, doc interface{}) error {
+// Insert one or more document(s)
+func (s *session) Insert(col string, docs ...interface{}) error {
   c := s.db.C(col)
-  err := c.Insert(doc)
+  err := c.Insert(docs...)
   if err != nil {
-    log.Printf("**ERROR: Could not insert document '%v' in collection %v: %v", doc, col, err)
+    log.Printf("**ERROR: Could not insert document(s) '%v' in collection %v: %v", docs, col, err)
   }
   return err
 }

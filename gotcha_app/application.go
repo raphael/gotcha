@@ -439,7 +439,7 @@ func addMessages(w http.ResponseWriter, req *http.Request) {
     http.Error(w, fmt.Sprintf("Cannot enqueue more than %v messages in one request", MaxEnqueueCount), 400)
     return
   }
-  internalMsgs := make([]gotcha.Message, 0, len(messages))
+  internalMsgs := make([]*gotcha.Message, 0, len(messages))
   now := time.Now().UTC()
   for _, m := range messages {
     body := m["body"]
@@ -452,7 +452,7 @@ func addMessages(w http.ResponseWriter, req *http.Request) {
       http.Error(w, fmt.Sprintf("Badly formed request: %v (expiresIn)", err), 400)
       return
     }
-    internalMsgs = append(internalMsgs, gotcha.Message{ID: bson.NewObjectId(), Body: body, QueueID: q.ID, ProjectID: q.ProjectID,
+    internalMsgs = append(internalMsgs, &gotcha.Message{ID: bson.NewObjectId(), Body: body, QueueID: q.ID, ProjectID: q.ProjectID,
                                                 ExpiresAt: now.Add(expiresIn), CreatedAt: now})
   }
   err = gotcha.SaveMessages(&internalMsgs)

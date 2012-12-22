@@ -16,15 +16,14 @@ type Message struct {
   LeaseExpiresAt time.Time     "lease_expires_at" // Lease expiry timestamp if any
 }
 
-// Default expiry
-const DefaultMessageExpiry = 604800
+// Default expiry is set to 7 days
+const DefaultMessageExpiry = time.Duration(7 * 24) * time.Hour
 
-// Minimum expiry time for message is set to 1 minute (value is in nanoseconds)
-//const MinExpiresIn = time.Duration(60 * 1000 * 1000 * 1000)
+// Minimum expiry time for message is set to 1 minute
 const MinMessageExpiry = time.Duration(1) * time.Minute
 
-// Maximum expiry time for message is set to 30 days (value is in nanoseconds)
-const MaxMessageExpiry = time.Duration(30 * 24 * 60 * 60 * 1000 * 1000 * 1000)
+// Maximum expiry time for message is set to 30 days
+const MaxMessageExpiry = time.Duration(30 * 24) * time.Hour
 
 // Load message with given Id
 func LoadMessage(id string) (*Message, error) {
@@ -34,14 +33,12 @@ func LoadMessage(id string) (*Message, error) {
 }
 
 // Save messages to database
-func SaveMessages(messages *[]Message) error {
+func SaveMessages(messages *[]*Message) error {
+  msgs := make([]interface{}, 0, len(*messages))
   for _, msg := range *messages {
-    err := Mongo.Insert("message", msg)
-    if err != nil {
-      return err
-    }
+    msgs = append(msgs, msg)
   }
-  return nil
+  return Mongo.Insert("message", msgs...)
 }
 
 // Delete message from database
